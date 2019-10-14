@@ -12,3 +12,6 @@ Use recursive clone to get the repo together with all the submodules:
 <pre>
 git clone --recursive https://github.com/hasherezade/dll_to_exe.git
 </pre>
+
+## Usage:
+    dll_to.exe <input_dll>[,function_name] <output_exe>
