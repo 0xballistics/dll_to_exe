@@ -28,7 +28,7 @@ public:
 
     bool setDll();
 
-    bool dllToExePatch();
+    bool dllToExePatch(const char*);
     bool savePe(const char *path);
 
 protected:

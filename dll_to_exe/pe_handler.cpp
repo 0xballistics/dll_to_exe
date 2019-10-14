@@ -34,7 +34,7 @@ inline long long int get_jmp_delta(ULONGLONG currVA, int instrLen, ULONGLONG des
     return diff;
 }
 
-bool PeHandler::dllToExePatch()
+bool PeHandler::dllToExePatch(const char* targetExportName = NULL)
 {
     BYTE back_stub32[] = {
         0x64, 0xA1, 0x30, 0x00, 0x00, 0x00, //MOV EAX,DWORD PTR FS:[0x30]
@@ -43,6 +43,7 @@ bool PeHandler::dllToExePatch()
         0x6A, 0x01, // PUSH 0x1
         0x50, // PUSH EAX
         0xE8, 0xDE, 0xAD, 0xF0, 0x0D, //CALL [ep]
+        0x90, 0x90, 0x90, 0x90, 0x90, //change with export
         0xC3
     };
 
@@ -53,7 +54,8 @@ bool PeHandler::dllToExePatch()
         0xBA, 0x01, 0x00, 0x00, 0x00, // mov edx, 1
         0x48, 0x8B, 0xDA, // mov rbx, rdx
         0x4D, 0x31, 0xC0, // xor r8, r8
-        0xE9, 0xDE, 0xAD, 0xF0, 0x0D, //jmp [ep]
+        0xE8, 0xDE, 0xAD, 0xF0, 0x0D, //jmp [ep]
+        0x90, 0x90, 0x90, 0x90, 0x90, //change with export
         0xC3 //ret
     };
 
@@ -63,7 +65,8 @@ bool PeHandler::dllToExePatch()
         back_stub = back_stub64;
         stub_size = sizeof(back_stub64);
     }
-    size_t call_offset = stub_size - 6;
+    size_t call_offset = stub_size - 11;
+    size_t call_export_offset = stub_size - 6;
 
     BYTE* ptr = getCavePtr(stub_size);
     if (!ptr) {
@@ -71,11 +74,28 @@ bool PeHandler::dllToExePatch()
     }
     DWORD orig_ep = peconv::get_entry_point_rva(this->pe_ptr);
     ULONGLONG ep_va = (ULONGLONG)this->pe_ptr + orig_ep;
+    // we want to call ep_va
     ULONGLONG call_va = (ULONGLONG)ptr + call_offset;
 
     DWORD jump_delta = (DWORD)get_jmp_delta(call_va, 5, ep_va);
     memmove(back_stub + call_offset + 1, &jump_delta, sizeof(DWORD));
+
+    if (targetExportName){
+        //jmp to export
+        ULONGLONG exp_va = (ULONGLONG)peconv::get_exported_func(this->pe_ptr, (LPSTR)targetExportName);
+        if (!exp_va){
+            return false;
+        }
+        ULONGLONG call_exp_va = (ULONGLONG)ptr + call_export_offset;
+        DWORD jump_exp_delta = (DWORD)get_jmp_delta(call_exp_va, 5, exp_va);
+        back_stub[call_export_offset] = 0xE8;
+
+        memmove(back_stub + call_export_offset + 1, &jump_exp_delta, sizeof(DWORD));
+    }
+
     memmove(ptr, back_stub, stub_size);
+
+    //save
     DWORD new_ep = DWORD(ptr - this->pe_ptr);
     return peconv::update_entry_point_rva(this->pe_ptr, new_ep);
 }
